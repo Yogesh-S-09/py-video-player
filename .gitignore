@@ -1,6 +1,5 @@
 *.log
 *.spec
-Assets/libmpv-2.dll
-Assets/yt-dlp.exe
+Assets/
 build/
 dist/
