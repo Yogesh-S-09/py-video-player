@@ -1,33 +1,62 @@
 # main_window.py
-# (UPDATED with arrow key bindings)
+# (UPDATED to set the window icon)
 
 import logging
+import os   # --- IMPORT OS ---
+import sys  # --- IMPORT SYS ---
 from PySide6.QtWidgets import (
     QMainWindow, QFileDialog, QMenuBar, QStyle, 
     QMessageBox, QInputDialog
 )
 from PySide6.QtGui import (
     QAction, QKeySequence, 
-    QDesktopServices
+    QDesktopServices, QIcon  # --- IMPORT QIcon ---
 )
-from PySide6.QtCore import QSize, Slot, QUrl, Qt
+from PySide6.QtCore import QSize, Slot, QUrl, Qt, QSettings
+from pathlib import Path
 from player_widget import PlayerWidget
 
 logger = logging.getLogger(__name__)
 
+# --- NEW HELPER FUNCTION ---
+def resource_path(relative_path):
+    """ Get absolute path to resource, works for dev and for PyInstaller """
+    try:
+        # PyInstaller creates a temp folder and stores path in _MEIPASS
+        base_path = sys._MEIPASS
+    except Exception:
+        # Not running in a PyInstaller bundle
+        base_path = os.path.abspath(".")
+
+    return os.path.join(base_path, relative_path)
+# ---------------------------
+
 class MainWindow(QMainWindow):
     def __init__(self):
-        # ... (this method is unchanged) ...
         super().__init__()
         self.setWindowTitle("PySide6 MPV Player")
         self.resize(800, 600)
+        
+        # --- SET THE ICON HERE ---
+        icon_path = resource_path("icon.png")
+        if Path(icon_path).exists():
+            self.setWindowIcon(QIcon(icon_path))
+        else:
+            logger.warning(f"Could not find icon at: {icon_path}")
+        # -------------------------
+        
+        self.settings = QSettings("MyAwesomePlayer", "PySideMPV")
+        
         self.player_widget = PlayerWidget(self)
         self.setCentralWidget(self.player_widget)
+        
         self.create_menu()
         self.player_widget.toggle_fullscreen_requested.connect(self.toggle_fullscreen)
 
+    # ... (the rest of the file is exactly the same) ...
+
     def create_menu(self):
-        # ... (this method is unchanged) ...
+        # ... (unchanged) ...
         menu_bar = self.menuBar()
         file_menu = menu_bar.addMenu("&File")
         open_action = QAction("&Open File...", self) 
@@ -55,17 +84,20 @@ class MainWindow(QMainWindow):
         
     @Slot()
     def open_file(self):
-        # ... (this method is unchanged) ...
+        # ... (unchanged) ...
+        last_path = self.settings.value("last_open_path", "") 
         filepath, _ = QFileDialog.getOpenFileName(
-            self, "Open Video File", "",
+            self, "Open Video File",
+            last_path, # Use the last path here
             "Video Files (*.mp4 *.mkv *.avi *.mov);;All Files (*.*)"
         )
         if filepath:
+            self.settings.setValue("last_open_path", str(Path(filepath).parent))
             self.player_widget.load_file(filepath)
             
     @Slot()
     def open_network_stream(self):
-        # ... (this method is unchanged) ...
+        # ... (unchanged) ...
         url, ok = QInputDialog.getText(self, "Open Network Stream", "Enter URL:")
         if ok and url:
             logger.info(f"User entered URL: {url}")
@@ -73,7 +105,7 @@ class MainWindow(QMainWindow):
     
     @Slot()
     def toggle_fullscreen(self):
-        # ... (this method is unchanged) ...
+        # ... (unchanged) ...
         if self.isFullScreen():
             self.showNormal()
             self.player_widget.overlay.fullscreen_btn.setIcon(
@@ -89,7 +121,7 @@ class MainWindow(QMainWindow):
             
     @Slot()
     def show_about_dialog(self):
-        # ... (this method is unchanged) ...
+        # ... (unchanged) ...
         about_text = (
             "<b>PySide6 MPV Player</b><br><br>"
             "A professional media player built with PySide6 and python-mpv.<br><br>"
@@ -99,59 +131,42 @@ class MainWindow(QMainWindow):
 
     @Slot()
     def open_help_link(self):
-        # ... (this method is unchanged) ...
+        # ... (unchanged) ...
         url = QUrl("https://mpv.io/manual/stable/")
         if not QDesktopServices.openUrl(url):
             logger.warning(f"Could not open URL: {url.toString()}")
             
     def closeEvent(self, event):
-        # ... (this method is unchanged) ...
+        # ... (unchanged) ...
         logger.info("Shutting down...") 
         self.player_widget.shutdown()
         event.accept()
 
-    # --- THIS IS THE UPDATED METHOD ---
     def keyPressEvent(self, event):
-        """Handle global key presses for shortcuts."""
-        
-        # Do nothing if a text input (like the URL dialog) has focus
+        # ... (unchanged) ...
         if self.focusWidget() and isinstance(self.focusWidget(), (QInputDialog)):
              super().keyPressEvent(event)
              return
-
-        # Handle spacebar for play/pause
         if event.key() == Qt.Key.Key_Space:
             self.player_widget.toggle_pause()
             event.accept()
-        
-        # Handle 'F' for fullscreen
         elif event.key() == Qt.Key.Key_F:
             self.toggle_fullscreen()
             event.accept()
-        
-        # Handle 'Esc' to exit fullscreen
         elif event.key() == Qt.Key.Key_Escape and self.isFullScreen():
             self.toggle_fullscreen()
             event.accept()
-        
-        # --- NEW KEY BINDINGS ---
         elif event.key() == Qt.Key.Key_Right:
             self.player_widget.seek_forward()
             event.accept()
-            
         elif event.key() == Qt.Key.Key_Left:
             self.player_widget.seek_backward()
             event.accept()
-            
         elif event.key() == Qt.Key.Key_Up:
             self.player_widget.add_volume(5)
             event.accept()
-            
         elif event.key() == Qt.Key.Key_Down:
             self.player_widget.add_volume(-5)
             event.accept()
-        # ------------------------
-        
         else:
             super().keyPressEvent(event)
-    # ------------------
