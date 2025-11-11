@@ -237,19 +237,40 @@ class PlayerWidget(QWidget):
                 logger.error(f"Failed to toggle pause: {e}")
 
     def next_chapter(self):
-        if self.player:
+        if self.player and self.chapter_list:
             try:
-                self.player.command('add', 'chapter', 1)
+                total_chapters = len(self.chapter_list)
+                current_index = self.current_chapter # This is the 0-based index
+
+                # Only advance if we are NOT on the last chapter
+                if current_index < (total_chapters - 1):
+                    new_index = current_index + 1
+                    logger.debug(f"Setting chapter from {current_index} to {new_index}")
+                    # Explicitly SET the chapter property to the new index
+                    self.player.chapter = new_index
+                else:
+                    logger.debug("Already on last chapter, not advancing.")
+                    
             except Exception as e:
-                logger.error(f"Failed to skip to next chapter: {e}")
+                logger.error(f"Failed to set next chapter: {e}")
 
     def prev_chapter(self):
-        if self.player:
+        if self.player and self.chapter_list:
             try:
-                self.player.command('add', 'chapter', -1)
-            except Exception as e:
-                logger.error(f"Failed to skip to previous chapter: {e}")
+                current_index = self.current_chapter # This is the 0-based index
 
+                # Only go back if we are NOT on the first chapter
+                if current_index > 0:
+                    new_index = current_index - 1
+                    logger.debug(f"Setting chapter from {current_index} to {new_index}")
+                    # Explicitly SET the chapter property to the new index
+                    self.player.chapter = new_index
+                else:
+                    logger.debug("Already on first chapter, not going back.")
+                    
+            except Exception as e:
+                logger.error(f"Failed to set previous chapter: {e}")
+                
     def seek_forward(self):
         if self.player:
             try:

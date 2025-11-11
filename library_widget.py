@@ -136,7 +136,7 @@ class LibraryWidget(QWidget):
         logger.info(f"Added to playlist: {filepath}")
         self.count_changed.emit(self.table_widget.rowCount())
 
-        self.thumbnail_delay_timer.start(100)  # 1 second delay
+        self.thumbnail_delay_timer.start(100)  # .1 second delay
 
     def process_pending_thumbnails(self):
         """Process queued thumbnail requests after startup delay."""
