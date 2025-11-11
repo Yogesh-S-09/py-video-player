@@ -11,7 +11,7 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtGui import (
     QAction, QKeySequence, 
-    QDesktopServices, QIcon
+    QDesktopServices, QIcon, QActionGroup 
 )
 from PySide6.QtCore import QSize, Slot, QUrl, Qt
 from pathlib import Path
@@ -20,6 +20,7 @@ from persistence_manager import PersistenceManager
 from player_widget import PlayerWidget
 from library_widget import LibraryWidget
 from stream_extractor import get_all_streams
+from theme_manager import ThemeManager
 
 logger = logging.getLogger(__name__)
 
@@ -33,18 +34,19 @@ def resource_path(relative_path):
 
 
 class MainWindow(QMainWindow):
-    def __init__(self):
+    def __init__(self, theme_manager: ThemeManager):
         super().__init__()
         self.setWindowTitle("PySide6 MPV Player")
         self.resize(1000, 600)
         
-        # --- FIX: Use correct icon path ---
+        # --- Store the manager ---
+        self.theme_manager = theme_manager
+
         icon_path = resource_path("Assets/icon.png")
         if Path(icon_path).exists():
             self.setWindowIcon(QIcon(icon_path))
         else:
             logger.warning(f"Could not find icon at: {icon_path}")
-        # ----------------------------------
             
         self.persistence_manager = PersistenceManager()
         self.stack = QStackedWidget()
@@ -68,7 +70,8 @@ class MainWindow(QMainWindow):
         self.library_widget.count_changed.connect(self.on_playlist_count_changed)
 
     def create_menu(self):
-        # ... (this method is unchanged) ...
+
+        # --- File Menu ---
         menu_bar = self.menuBar()
         file_menu = menu_bar.addMenu("&File")
         add_files_action = QAction("&Add File(s) to Library...", self) 
@@ -84,11 +87,32 @@ class MainWindow(QMainWindow):
         exit_action.setShortcut(QKeySequence.StandardKey.Quit)
         exit_action.triggered.connect(self.close)
         file_menu.addAction(exit_action)
+
+        # --- View Menu ---
         view_menu = menu_bar.addMenu("&View")
         go_to_library_action = QAction("Show Library", self)
         go_to_library_action.setShortcut("Ctrl+P")
         go_to_library_action.triggered.connect(self.switch_to_library) 
         view_menu.addAction(go_to_library_action)
+
+        # --- NEW THEMES MENU ---
+        themes_menu = menu_bar.addMenu("&Themes")
+        theme_group = QActionGroup(self)
+        theme_group.setExclusive(True)
+
+        for theme_name in self.theme_manager.get_theme_names():
+            action = QAction(theme_name, self, checkable=True)
+            if theme_name == self.theme_manager.current_theme:
+                action.setChecked(True)
+            
+            # Use a lambda to capture the theme_name
+            action.triggered.connect(
+                lambda checked, name=theme_name: self.on_theme_change(name)
+            )
+            theme_group.addAction(action)
+            themes_menu.addAction(action)
+
+        # --- Help Menu ---
         help_menu = menu_bar.addMenu("&Help")
         help_action = QAction("&Help", self)
         help_action.setShortcut(QKeySequence.StandardKey.HelpContents)
@@ -98,6 +122,11 @@ class MainWindow(QMainWindow):
         about_action = QAction("&About...", self)
         about_action.triggered.connect(self.show_about_dialog)
         help_menu.addAction(about_action)
+
+    @Slot(str)
+    def on_theme_change(self, theme_name):
+        """Applies the selected theme."""
+        self.theme_manager.apply_theme(theme_name)
 
     @Slot(int)
     def on_playlist_count_changed(self, count):

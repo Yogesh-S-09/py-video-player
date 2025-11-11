@@ -1,12 +1,9 @@
-# main.py
-# (UPDATED to fix logging and 'Open With' TypeError)
-
 import sys
 import logging
 from pathlib import Path
 from PySide6.QtWidgets import QApplication, QMessageBox
 from main_window import MainWindow
-from stylesheet import STYLESHEET
+from theme_manager import ThemeManager
 
 def setup_logging():
     """Configures the global logger for the application."""
@@ -29,14 +26,15 @@ def setup_logging():
 def main():
     setup_logging()
     app = QApplication(sys.argv)
-    app.setStyleSheet(STYLESHEET)
+    
+    theme_manager = ThemeManager(app)
     
     file_to_open = None
     if len(sys.argv) > 1:
         file_to_open = sys.argv[1]
         logging.info(f"Attempting to open file from argument: {file_to_open}")
 
-    window = MainWindow()
+    window = MainWindow(theme_manager)
     window.show()
     
     if file_to_open:
