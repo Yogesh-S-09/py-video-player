@@ -8,7 +8,7 @@ from PySide6.QtWidgets import (
     QAbstractItemView, QSizePolicy, QMessageBox, QLabel,
     QHeaderView, QListWidgetItem
 )
-from PySide6.QtCore import Qt, Signal, Slot, QSize
+from PySide6.QtCore import Qt, Signal, Slot, QSize, QTimer
 from PySide6.QtGui import QFont, QIcon
 from persistence_manager import PersistenceManager
 from pathlib import Path
@@ -29,15 +29,16 @@ class LibraryWidget(QWidget):
         self.file_dialog.setFileMode(QFileDialog.FileMode.ExistingFiles)
         self.file_dialog.setNameFilter("Video Files (*.mp4 *.mkv *.avi *.mov);;All Files (*.*)")
         self.worker_threads = []
-        
-        # --- NEW: Store stream data ---
-        self.stream_data_cache = {} # Stores {filepath: stream_dict}
+        self.stream_data_cache = {}
+        self.thumbnail_delay_timer = QTimer(self)  # Delay timer
+        self.thumbnail_delay_timer.setSingleShot(True)
+        self.thumbnail_delay_timer.timeout.connect(self.process_pending_thumbnails)
+        self.pending_thumbnail_requests = []  # Queue for thumbnail requests
         
         self.init_ui()
         self.create_connections()
         
     def init_ui(self):
-        # ... (this method is unchanged) ...
         layout = QVBoxLayout()
         layout.setContentsMargins(10, 10, 10, 10)
         title = QLabel("Media Library")
@@ -93,7 +94,6 @@ class LibraryWidget(QWidget):
                 for filepath in filepaths:
                     self.add_file(filepath)
 
-    # --- UPDATED add_file ---
     def add_file(self, filepath, display_name=None, stream_data=None):
         """
         Adds a file or stream to the list.
@@ -106,7 +106,6 @@ class LibraryWidget(QWidget):
         if display_name is None:
             display_name = path.name if path.exists() else filepath
         
-        # --- Store stream data if provided ---
         if stream_data:
             self.stream_data_cache[filepath] = stream_data
         
@@ -132,12 +131,20 @@ class LibraryWidget(QWidget):
         self.table_widget.setItem(row_position, 2, duration_item)
         self.table_widget.setItem(row_position, 3, resolution_item)
         
-        self.start_thumbnail_worker(filepath, row_position)
+        self.pending_thumbnail_requests.append((filepath, row_position))
         
         logger.info(f"Added to playlist: {filepath}")
         self.count_changed.emit(self.table_widget.rowCount())
 
-    # ... (start_thumbnail_worker, on_thumbnail_ready, on_thumbnail_failed are unchanged) ...
+        self.thumbnail_delay_timer.start(100)  # 1 second delay
+
+    def process_pending_thumbnails(self):
+        """Process queued thumbnail requests after startup delay."""
+        for filepath, row in self.pending_thumbnail_requests:
+            self.start_thumbnail_worker(filepath, row)
+        self.pending_thumbnail_requests.clear()
+    
+    
     def start_thumbnail_worker(self, filepath, row):
         worker = ThumbnailWorker(filepath, row)
         worker.thumbnail_ready.connect(self.on_thumbnail_ready)
@@ -145,6 +152,7 @@ class LibraryWidget(QWidget):
         worker.finished.connect(lambda: self.cleanup_worker(worker))
         worker.start()
         self.worker_threads.append(worker)
+
     @Slot(int, QIcon, str, str)
     def on_thumbnail_ready(self, row, icon, duration_str, resolution_str):
         try:
