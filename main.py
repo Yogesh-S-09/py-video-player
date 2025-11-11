@@ -1,35 +1,35 @@
 # main.py
-# (UPDATED to create the log file next to the .exe)
+# (UPDATED to fix logging)
 
 import sys
 import logging
-from pathlib import Path # --- IMPORT Pathlib ---
+from pathlib import Path
 from PySide6.QtWidgets import QApplication
 from main_window import MainWindow
 from stylesheet import STYLESHEET
 
 def setup_logging():
     """Configures the global logger for the application."""
-    
-    # --- THIS IS THE FIX ---
-    # Get the directory where the script/exe is located
-    # sys.argv[0] is the path to our script or .exe
-    base_path = Path(sys.argv[0]).parent.resolve()
-    log_file_path = base_path / "player.log"
-    # -----------------------
-    
-    logging.basicConfig(
-        level=logging.DEBUG, 
-        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-        handlers=[
-            logging.StreamHandler(sys.stdout),
-            # Use the new, absolute path
-            logging.FileHandler(log_file_path, mode="w") 
-        ]
-    )
-    logging.info(f"Logging configured. Log file at: {log_file_path}")
+    try:
+        base_path = Path(sys.argv[0]).parent.resolve()
+        log_file_path = base_path / "player.log"
+        
+        logging.basicConfig(
+            level=logging.DEBUG, 
+            format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+            handlers=[
+                # --- FIX: Removed 'encoding' from StreamHandler ---
+                logging.StreamHandler(sys.stdout),
+                # --- FileHandler is correct ---
+                logging.FileHandler(log_file_path, mode="w", encoding='utf-8')
+            ]
+        )
+        logging.info("Logging configured successfully.")
+    except Exception as e:
+        print(f"Failed to configure logging: {e}")
 
 def main():
+    # ... (rest of file is unchanged) ...
     setup_logging()
     app = QApplication(sys.argv)
     app.setStyleSheet(STYLESHEET)
@@ -43,10 +43,9 @@ def main():
     window.show()
     
     if file_to_open:
-        # --- FIX: Need to import Path in this file to use it here ---
-        # We check if the file exists before trying to load it
         if Path(file_to_open).exists():
-            window.player_widget.load_file(file_to_open)
+            # This call is now correct
+            window.play_file_and_switch(file_to_open, [], [])
         else:
             logging.warning(f"File not found: {file_to_open}")
     
