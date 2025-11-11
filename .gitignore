@@ -1,5 +1,7 @@
 *.log
 *.spec
+.vscode/
+.venv/
 Assets/
 build/
 dist/

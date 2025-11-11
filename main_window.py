@@ -163,6 +163,7 @@ class MainWindow(QMainWindow):
         logger.info("Switching to player view.")
         
         # Switch to player view
+        self.player_widget.ensure_initialized()
         self.stack.setCurrentWidget(self.player_widget)
         self.player_widget.show()
         self.library_widget.hide()

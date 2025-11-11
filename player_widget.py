@@ -51,29 +51,83 @@ class PlayerWidget(QWidget):
     def __init__(self, parent=None, persistence_manager: PersistenceManager = None):
         super().__init__(parent)
         self.persistence_manager = persistence_manager
-        self.player = None; self.overlay = None; self.current_aid = 'no'
-        self.current_sid = 'no'; self.current_vid = 'no'
-        self.chapter_list = []; self.current_chapter = 0
+        self.player = None
+        self.overlay = None 
+        self.current_aid = 'no'
+        self.current_sid = 'no'
+        self.current_vid = 'no'
+        self.chapter_list = [] 
+        self.current_chapter = 0
         self.current_filepath = None
         self.loop_state = 0
         self.pending_resume_time = 0.0
+        self.is_initialized = False
+       
         self.video_widget = QWidget(self)
         self.video_widget.setAttribute(Qt.WidgetAttribute.WA_OpaquePaintEvent)
         self.video_widget.setStyleSheet("background-color: black;")
-        layout = QVBoxLayout(); layout.setContentsMargins(0, 0, 0, 0)
-        layout.addWidget(self.video_widget); self.setLayout(layout)
-        self.setMouseTracking(True); self.video_widget.setMouseTracking(True)
+
+        layout = QVBoxLayout()
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(self.video_widget)
+        self.setLayout(layout)
+
+        self.setMouseTracking(True)
+        self.video_widget.setMouseTracking(True)
         self.video_widget.setFocus() 
-        self.hide_timer = QTimer(self); self.hide_timer.setInterval(3000)
-        self.hide_timer.setSingleShot(True); self.hide_timer.timeout.connect(self.hide_controls)
-        self.initialize_player()
+
+        self.hide_timer = QTimer(self)
+        self.hide_timer.setInterval(3000)
+        self.hide_timer.setSingleShot(True)
+        self.hide_timer.timeout.connect(self.hide_controls)
+
+        self.overlay = OverlayWidget(None, self)  # Create overlay without player
+        self.create_basic_connections()
+
+    def ensure_initialized(self):
+        """Initialize MPV player on first use."""
+        if not self.is_initialized:
+            self.initialize_player()
+            if self.player:
+                self.player.event_callback('playback-restart')(self.on_playback_restart_event)
+                self.player.event_callback('end-file')(self.on_end_file_event)
+                self.overlay.player = self.player  # Update overlay reference
+                self.setup_observers()
+                self.setup_full_connections()
+            self.is_initialized = True
+
+    def create_basic_connections(self):
+        """Setup connections that don't require MPV player."""
+        if self.overlay:
+            self.overlay.fullscreen_toggled.connect(self.toggle_fullscreen_requested.emit)
+            self.overlay.back_requested.connect(self.show_library_requested.emit)
+
+    def setup_full_connections(self):
+        """Setup all MPV-dependent connections."""
+        if not self.overlay:
+            return
+            
+        self.pause_changed.connect(self.overlay.update_pause_button)
+        self.time_pos_changed.connect(self.overlay.update_time)
+        self.duration_changed.connect(self.overlay.update_duration)
+        self.track_list_changed.connect(self.overlay.update_track_menus)
+        self.aid_changed.connect(lambda v: self.overlay.update_track_selection('aid', v))
+        self.sid_changed.connect(lambda v: self.overlay.update_track_selection('sid', v))
+        self.vid_changed.connect(lambda v: self.overlay.update_track_selection('vid', v))
+        self.volume_changed.connect(self.overlay.update_volume_slider)
+        self.mute_changed.connect(self.overlay.update_mute_button)
+        self.chapter_list_changed.connect(self.overlay.update_chapter_menu)
+        self.chapter_changed.connect(self.overlay.update_chapter_selection)
+        self.loop_state_changed.connect(self.overlay.update_loop_button)
+        self.end_file_signal.connect(self.handle_end_file)
+        
+        # Connect overlay buttons to player methods
         if self.player:
-            self.player.event_callback('playback-restart')(self.on_playback_restart_event)
-            self.player.event_callback('end-file')(self.on_end_file_event)
-            self.overlay = OverlayWidget(self.player, self)
-            self.overlay.hide()
-            self.setup_observers()
-            self.setup_connections()
+            self.overlay.prev_chapter_btn.clicked.connect(self.prev_chapter)
+            self.overlay.next_chapter_btn.clicked.connect(self.next_chapter)
+            self.overlay.seek_backward_btn.clicked.connect(self.seek_backward)
+            self.overlay.seek_forward_btn.clicked.connect(self.seek_forward)
+            self.overlay.loop_btn.clicked.connect(self.cycle_loop_state)
 
     def initialize_player(self):
         try:
@@ -164,24 +218,6 @@ class PlayerWidget(QWidget):
             logger.error(f"Error in on_playback_restart_event: {e}", exc_info=True)
             self.player.pause = False
 
-    def setup_connections(self):
-        if not self.overlay: return
-        self.pause_changed.connect(self.overlay.update_pause_button)
-        self.time_pos_changed.connect(self.overlay.update_time)
-        self.duration_changed.connect(self.overlay.update_duration)
-        self.track_list_changed.connect(self.overlay.update_track_menus)
-        self.aid_changed.connect(lambda v: self.overlay.update_track_selection('aid', v))
-        self.sid_changed.connect(lambda v: self.overlay.update_track_selection('sid', v))
-        self.vid_changed.connect(lambda v: self.overlay.update_track_selection('vid', v))
-        self.overlay.fullscreen_toggled.connect(self.toggle_fullscreen_requested.emit)
-        self.volume_changed.connect(self.overlay.update_volume_slider)
-        self.mute_changed.connect(self.overlay.update_mute_button)
-        self.chapter_list_changed.connect(self.overlay.update_chapter_menu)
-        self.chapter_changed.connect(self.overlay.update_chapter_selection)
-        self.overlay.back_requested.connect(self.show_library_requested.emit)
-        self.loop_state_changed.connect(self.overlay.update_loop_button)
-        self.end_file_signal.connect(self.handle_end_file)
-
     @Slot()
     def handle_end_file(self):
         """Handle end-file signal and emit playback_finished if not in Loop One mode."""
@@ -269,7 +305,7 @@ class PlayerWidget(QWidget):
             self.check_for_resume() 
             
             self.player.play(filepath)
-            
+
             if video_tracks:
                 for track in video_tracks:
                     try:
