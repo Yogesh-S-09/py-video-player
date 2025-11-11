@@ -229,13 +229,32 @@ class OverlayWidget(QWidget):
     def show_volume_tooltip(self, value):
         vol_str = f"{value}%"; QToolTip.showText(QCursor.pos(), vol_str, self.volume_slider)
     def toggle_pause(self):
-        if self.player: self.player.pause = not self.player.pause
+        if self.player:
+            try:
+                self.player.pause = not self.player.pause
+            except Exception as e:
+                logger.error(f"Failed to toggle pause: {e}")
+    
     def stop_video(self):
-        if self.player: self.player.stop()
+        if self.player:
+            try:
+                self.player.stop()
+            except Exception as e:
+                logger.error(f"Failed to stop video: {e}")
+    
     def toggle_mute(self):
-        if self.player: self.player.mute = not self.player.mute
+        if self.player:
+            try:
+                self.player.mute = not self.player.mute
+            except Exception as e:
+                logger.error(f"Failed to toggle mute: {e}")
+    
     def on_volume_change(self, value):
-        if self.player: self.player.volume = value
+        if self.player:
+            try:
+                self.player.volume = value
+            except Exception as e:
+                logger.error(f"Failed to change volume: {e}")
     def update_volume_slider(self, value):
         if value is None: value = 100
         self.volume_slider.setValue(value); self.volume_label.setText(f"{value}%")
@@ -245,7 +264,11 @@ class OverlayWidget(QWidget):
             self.volume_label.setText("Mute")
         else:
             self.mute_btn.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_MediaVolume))
-            if self.player: self.volume_label.setText(f"{int(self.player.volume)}%")
+            if self.player:
+                try:
+                    self.volume_label.setText(f"{int(self.player.volume)}%")
+                except Exception:
+                    self.volume_label.setText("100%")
     def update_pause_button(self, is_paused):
         if is_paused:
             self.play_pause_btn.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_MediaPlay))
@@ -259,16 +282,28 @@ class OverlayWidget(QWidget):
         if duration is None: duration = 0.0
         self.video_duration = duration
         self.seek_slider.setMaximum(int(duration))
+
     def on_seek_press(self): self.is_seeking = True
-    def on_seek_release(self,):
+
+    def on_seek_release(self):
         self.is_seeking = False; seek_time = self.seek_slider.value()
-        if self.player: self.player.time_pos = seek_time
+        if self.player: 
+            try:
+                self.player.time_pos = seek_time
+            except Exception as e:
+                logger.error(f"Failed to seek to {seek_time}: {e}")
+
     def set_track(self, property, value):
-        if self.player: setattr(self.player, property, value)
+        if self.player:
+            try:
+                setattr(self.player, property, value)
+            except Exception as e:
+                logger.error(f"Failed to set track property {property} to {value}: {e}")
+
     def set_track_and_update_menu(self, property, value, menu):
         self.set_track(property, value)
         for action in menu.actions():
-            if not action.isCheckable(): continue
+# ... (unchanged code below) ...
             action.setChecked(action.data() == value)
     def _format_bitrate(self, bitrate):
         if bitrate is None or bitrate <= 0: return None
@@ -325,8 +360,11 @@ class OverlayWidget(QWidget):
             if not action.isCheckable(): continue
             action.setChecked(action.data() == value)
     def set_chapter_and_update_menu(self, index):
-        # ... (this method is unchanged) ...
-        if self.player: self.player.chapter = index
+        if self.player:
+            try:
+                self.player.chapter = index
+            except Exception as e:
+                logger.error(f"Failed to set chapter to {index}: {e}")
         for action in self.chapter_menu.actions():
             if not action.isCheckable(): continue
             action.setChecked(action.data() == index)

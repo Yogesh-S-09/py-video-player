@@ -1,5 +1,5 @@
 # stream_extractor.py
-# (UPDATED to separate audio/video and find all tracks)
+# (Your updated code)
 
 from yt_dlp import YoutubeDL
 import logging
@@ -24,6 +24,25 @@ def get_all_streams(url):
 
         video_streams = []
         audio_streams = []
+        
+        # --- Handle direct media URLs without formats ---
+        if info.get('formats') is None:
+            if info.get('video_ext') == "unknown_video":
+                return {
+                    'title': info.get('title', url),
+                    'video_streams': [{
+                            'name': "Direct Stream",
+                            'url': info.get('url', url),
+                            'lang': "und",
+                            'vcodec': info.get('vcodec', ""),
+                            'acodec': info.get('acodec', ""),
+                            'bandwidth': info.get('tbr', 0)
+                        }],
+                    'audio_streams': []
+                }
+            logger.warning(f"No formats found for URL: {url}")
+            return None
+        # ---------------------
 
         for f in info.get('formats', []):
             if not f.get('url'):
@@ -53,7 +72,6 @@ def get_all_streams(url):
 
         logger.info(f"Found {len(video_streams)} video, {len(audio_streams)} audio streams.")
         
-        # Sort video streams by quality (bandwidth)
         video_streams.sort(key=lambda x: x.get('bandwidth', 0), reverse=True)
         
         return {

@@ -1,5 +1,5 @@
 # main_window.py
-# (UPDATED to fix icon path and 'Open With' logic)
+# (UPDATED to fix icon path and QtKey typo)
 
 import logging
 import os
@@ -45,7 +45,7 @@ class MainWindow(QMainWindow):
         else:
             logger.warning(f"Could not find icon at: {icon_path}")
         # ----------------------------------
-        
+            
         self.persistence_manager = PersistenceManager()
         self.stack = QStackedWidget()
         self.player_widget = PlayerWidget(self, self.persistence_manager)
@@ -53,7 +53,10 @@ class MainWindow(QMainWindow):
         self.stack.addWidget(self.library_widget)
         self.stack.addWidget(self.player_widget)
         self.setCentralWidget(self.stack)
+        
         self.create_menu()
+        
+        # --- CONNECT SIGNALS ---
         self.player_widget.toggle_fullscreen_requested.connect(self.toggle_fullscreen)
         self.library_widget.play_file_requested.connect(self.play_file_and_switch)
         self.player_widget.playback_finished.connect(self.on_playback_finished)
@@ -103,58 +106,108 @@ class MainWindow(QMainWindow):
 
     @Slot(bool)
     def on_playback_finished(self, loop_all_is_active):
-        # ... (this method is unchanged) ...
-        if loop_all_is_active:
-            logger.info("File ended, Loop All active: calling play_next(True).")
-            self.library_widget.play_next(loop_all=True)
+        """
+        Called when a video finishes playing.
+        Advances to next video or returns to library view.
+        """
+        has_next = self.library_widget.has_next_video(loop_all=loop_all_is_active)
+        
+        if has_next:
+            logger.info("Advancing to next video in playlist.")
+            self.library_widget.play_next(loop_all=loop_all_is_active)
         else:
-            logger.info("File ended, Loop Off: switching to library.")
-            self.switch_to_library()
+            logger.info("Playlist finished, returning to library.")
+            # Trigger back button for clean transition
+            from PySide6.QtCore import QTimer
+            QTimer.singleShot(50, lambda: self.player_widget.overlay.back_btn.click())
             
-    # --- THIS IS THE UPDATED METHOD ---
     @Slot(str, list, list)
     def play_file_and_switch(self, filepath, audio_tracks, video_tracks):
         """Loads a file in the player and switches to the player view."""
         if filepath is None:
-            self.switch_to_library()
+            logger.info("play_file_and_switch called with None - switching to library.")
+            # Use QTimer to defer the switch
+            from PySide6.QtCore import QTimer
+            QTimer.singleShot(100, self.switch_to_library)
             return
-            
-        # --- This call is now correct ---
-        self.player_widget.load_file(filepath, audio_tracks, video_tracks)
+        
+        logger.info("Switching to player view.")
+        
+        # Switch to player view
         self.stack.setCurrentWidget(self.player_widget)
-    # ------------------------------------
+        self.player_widget.show()
+        self.library_widget.hide()
+        
+        # Load the file with controls visible
+        self.player_widget.load_file(filepath, audio_tracks, video_tracks, show_controls=True)
 
     @Slot()
     def switch_to_library(self):
-        # ... (this method is unchanged) ...
-        logger.debug("Switching to library view.")
-        self.player_widget.hide_controls(force=True)
+        """Switch from player view to library view."""
+        if self.stack.currentWidget() == self.library_widget:
+            return
+        
+        logger.info("Switching to library view.")
+        
+        # Hide overlay and stop its timer
+        if self.player_widget.overlay:
+            self.player_widget.overlay.hide()
+            self.player_widget.overlay.setVisible(False)
+        
+        if self.player_widget.hide_timer:
+            self.player_widget.hide_timer.stop()
+        
+        # Save position and stop player
         self.player_widget.save_current_position()
-        self.player_widget.player.stop()
+        
+        if self.player_widget.player:
+            try:
+                self.player_widget.player.pause = True
+                self.player_widget.player.stop()
+            except Exception as e:
+                logger.warning(f"Failed to stop player: {e}")
+        
+        # Switch views
         self.stack.setCurrentWidget(self.library_widget)
+        self.player_widget.hide()
+        self.library_widget.show()
+        
+        # Exit fullscreen if active
         if self.isFullScreen():
             self.toggle_fullscreen()
+        
+        self.library_widget.setFocus()
             
+    # --- THIS IS THE UPDATED METHOD ---
     @Slot()
     def open_network_stream(self):
-        # ... (this method is unchanged) ...
+        """
+        Handles the stream extraction flow.
+        """
         url, ok = QInputDialog.getText(self, "Open Network Stream", "Enter URL:")
         if not (ok and url):
             return
+            
         logger.info(f"User entered URL: {url}. Fetching streams...")
+        
         stream_data = get_all_streams(url)
+        
         if not stream_data or not stream_data.get('video_streams'):
             QMessageBox.warning(self, "No Streams Found", "Could not find any playable video streams at that URL.")
             return
+            
         self.library_widget.add_file(
             filepath=url, 
             display_name=stream_data.get('title', url),
             stream_data=stream_data
         )
+        
         main_video_url = stream_data['video_streams'][0]['url']
         other_video_tracks = stream_data['video_streams'][1:]
         audio_tracks = stream_data.get('audio_streams', [])
+
         self.play_file_and_switch(main_video_url, audio_tracks, other_video_tracks)
+    # ------------------------------------
     
     @Slot()
     def toggle_fullscreen(self):
@@ -190,14 +243,14 @@ class MainWindow(QMainWindow):
             logger.warning(f"Could not open URL: {url.toString()}")
             
     def closeEvent(self, event):
-        # ... (this method is unchanged) ...
         logger.info("Shutting down...") 
         self.player_widget.save_current_position()
         self.player_widget.shutdown()
+        self.library_widget.cleanup_all_workers()
         event.accept()
 
+    # --- THIS IS THE UPDATED METHOD ---
     def keyPressEvent(self, event):
-        # ... (this method is unchanged) ...
         focused = self.focusWidget()
         if focused and isinstance(focused, (QInputDialog, QListWidget)):
              super().keyPressEvent(event)
@@ -215,9 +268,13 @@ class MainWindow(QMainWindow):
         elif event.key() == Qt.Key.Key_Right:
             self.player_widget.seek_forward()
             event.accept()
-        elif event.key() == QtKey.Key_Left:
+        
+        # --- FIX: Changed 'QtKey' to 'Qt.Key' ---
+        elif event.key() == Qt.Key.Key_Left: 
             self.player_widget.seek_backward()
             event.accept()
+        # -----------------------------------------
+            
         elif event.key() == Qt.Key.Key_Up:
             self.player_widget.add_volume(5)
             event.accept()
@@ -226,3 +283,4 @@ class MainWindow(QMainWindow):
             event.accept()
         else:
             super().keyPressEvent(event)
+    # ------------------------------------

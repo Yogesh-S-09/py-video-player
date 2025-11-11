@@ -1,5 +1,5 @@
 # library_widget.py
-# (UPDATED to correctly store filepath/URL)
+# (UPDATED to store and pass stream_data)
 
 import logging
 from PySide6.QtWidgets import (
@@ -19,8 +19,7 @@ logger = logging.getLogger(__name__)
 class LibraryWidget(QWidget):
     
     # --- UPDATED SIGNAL ---
-    # Now emits all stream info
-    play_file_requested = Signal(str, list, list)
+    play_file_requested = Signal(str, list, list) # path, audio_tracks, video_tracks
     count_changed = Signal(int)
     
     def __init__(self, persistence_manager: PersistenceManager, parent=None):
@@ -94,6 +93,7 @@ class LibraryWidget(QWidget):
                 for filepath in filepaths:
                     self.add_file(filepath)
 
+    # --- UPDATED add_file ---
     def add_file(self, filepath, display_name=None, stream_data=None):
         """
         Adds a file or stream to the list.
@@ -132,7 +132,6 @@ class LibraryWidget(QWidget):
         self.table_widget.setItem(row_position, 2, duration_item)
         self.table_widget.setItem(row_position, 3, resolution_item)
         
-        # --- Use filepath for thumbnail worker ---
         self.start_thumbnail_worker(filepath, row_position)
         
         logger.info(f"Added to playlist: {filepath}")
@@ -143,6 +142,7 @@ class LibraryWidget(QWidget):
         worker = ThumbnailWorker(filepath, row)
         worker.thumbnail_ready.connect(self.on_thumbnail_ready)
         worker.thumbnail_failed.connect(self.on_thumbnail_failed)
+        worker.finished.connect(lambda: self.cleanup_worker(worker))
         worker.start()
         self.worker_threads.append(worker)
     @Slot(int, QIcon, str, str)
@@ -162,6 +162,27 @@ class LibraryWidget(QWidget):
         except Exception as e:
             logger.warning(f"Failed to set table error data for row {row}: {e}")
 
+    def cleanup_worker(self, worker):
+        """Remove finished worker from list to prevent memory leak."""
+        try:
+            if worker in self.worker_threads:
+                self.worker_threads.remove(worker)
+                worker.deleteLater()
+        except Exception as e:
+            logger.warning(f"Failed to cleanup worker: {e}")
+    
+    def cleanup_all_workers(self):
+        """Stop and cleanup all worker threads."""
+        for worker in self.worker_threads:
+            try:
+                if worker.isRunning():
+                    worker.terminate()
+                    worker.wait(1000)  # Wait up to 1 second
+                worker.deleteLater()
+            except Exception as e:
+                logger.warning(f"Failed to cleanup worker: {e}")
+        self.worker_threads.clear()
+
     @Slot()
     def remove_selected_items(self):
         selected_rows = sorted(
@@ -171,7 +192,6 @@ class LibraryWidget(QWidget):
         if not selected_rows: return
         
         for row in selected_rows:
-            # --- Remove from cache ---
             try:
                 item = self.table_widget.item(row, 1)
                 filepath = item.data(Qt.ItemDataRole.UserRole)
@@ -179,7 +199,6 @@ class LibraryWidget(QWidget):
                     del self.stream_data_cache[filepath]
             except Exception as e:
                 logger.warning(f"Could not remove from cache: {e}")
-            # -------------------------
             self.table_widget.removeRow(row)
             
         self.count_changed.emit(self.table_widget.rowCount())
@@ -187,8 +206,9 @@ class LibraryWidget(QWidget):
     @Slot()
     def clear_all_items(self):
         self.table_widget.setRowCount(0)
-        self.stream_data_cache.clear() # --- Clear cache ---
+        self.stream_data_cache.clear()
         self.count_changed.emit(0)
+        self.cleanup_all_workers()
 
     # --- UPDATED play_item ---
     @Slot(QTableWidgetItem)
@@ -204,7 +224,6 @@ class LibraryWidget(QWidget):
         logger.info(f"Requesting playback for: {filepath}")
         self.table_widget.setCurrentItem(title_item)
         
-        # --- Check if this is a pre-fetched stream ---
         if filepath in self.stream_data_cache:
             stream_data = self.stream_data_cache[filepath]
             video_streams = stream_data.get('video_streams', [])
@@ -214,33 +233,48 @@ class LibraryWidget(QWidget):
                 logger.error("No video streams found for this item.")
                 return
                 
-            # Play the best video, add others as tracks
             main_video_url = video_streams[0]['url']
             other_video_tracks = video_streams[1:]
             
             self.play_file_requested.emit(main_video_url, audio_streams, other_video_tracks)
         else:
-            # It's a local file, play it directly
-            self.play_file_requested.emit(filepath, [], []) # No extra tracks
+            self.play_file_requested.emit(filepath, [], []) # Local file
     # -----------------------------------------------
 
-    @Slot(bool)
-    def play_next(self, loop_all=False):
-        # ... (this method is unchanged) ...
+    def has_next_video(self, loop_all=False):
+        """Check if there's a next video to play."""
         current_row = self.table_widget.currentRow()
         next_row = current_row + 1
-        if next_row >= self.table_widget.rowCount():
-            if loop_all and self.table_widget.rowCount() > 0:
-                logger.info("Playlist looping back to start.")
+        row_count = self.table_widget.rowCount()
+        
+        if next_row >= row_count:
+            # At end of playlist
+            return loop_all and row_count > 0
+        return True
+    
+    @Slot(bool)
+    def play_next(self, loop_all=False):
+        """Play the next video in the playlist."""
+        current_row = self.table_widget.currentRow()
+        next_row = current_row + 1
+        row_count = self.table_widget.rowCount()
+        
+        # Calculate next row (with looping if needed)
+        if next_row >= row_count:
+            if loop_all and row_count > 0:
+                logger.info("Looping playlist back to first video.")
                 next_row = 0
             else:
-                logger.info("Playlist finished.")
-                self.play_file_requested.emit(None, [], []) # Pass empty lists
+                logger.warning("play_next called but no next video available.")
                 return
+        
+        # Play the next item
         next_item = self.table_widget.item(next_row, 1)
         if next_item:
             self.table_widget.setCurrentItem(next_item)
             self.play_item(next_item)
+        else:
+            logger.error(f"No item found at row {next_row}")
             
     @Slot()
     def play_previous(self):

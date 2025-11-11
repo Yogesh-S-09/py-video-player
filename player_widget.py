@@ -1,5 +1,5 @@
 # player_widget.py
-# (UPDATED to fix load_file method signature)
+# (UPDATED to remove emojis from the log handler)
 
 import logging 
 import mpv
@@ -14,20 +14,30 @@ from utils import format_time
 
 logger = logging.getLogger(__name__)
 
-# ... (mpv_log_handler is unchanged) ...
+# --- UPDATED LOG HANDLER (Emojis removed) ---
 def mpv_log_handler(level, prefix, text):
-    text = text.strip();
+    """
+    A simple wrapper function to catch MPV's log messages and
+    pass them to our main logger.
+    """
+    text = text.strip()
     text = text.replace("📺", "[Video]").replace("🔊", "[Audio]")
-    if level == 'error': logger.error(f"[MPV:{prefix}] {text}")
-    elif level == 'warn': logger.warning(f"[MPV:{prefix}] {text}")
-    elif level == 'info': logger.info(f"[MPV:{prefix}] {text}")
-    elif level == 'debug': logger.debug(f"[MPV:{prefix}] {text}")
-    else: logger.debug(f"[MPV:{prefix} ({level})] {text}")
-
+    
+    if level == 'error':
+        logger.error(f"[MPV:{prefix}] {text}")
+    elif level == 'warn':
+        logger.warning(f"[MPV:{prefix}] {text}")
+    elif level == 'info':
+        logger.info(f"[MPV:{prefix}] {text}")
+    elif level == 'debug':
+        logger.debug(f"[MPV:{prefix}] {text}")
+    else:
+        logger.debug(f"[MPV:{prefix} ({level})] {text}")
+# ------------------------------------------
 
 class PlayerWidget(QWidget):
+    # ... (rest of the file is unchanged) ...
     
-    # ... (signals are unchanged) ...
     pause_changed = Signal(bool); time_pos_changed = Signal(float)
     duration_changed = Signal(float); track_list_changed = Signal(list, str, str, str)
     aid_changed = Signal(str); sid_changed = Signal(str); vid_changed = Signal(str)
@@ -39,7 +49,6 @@ class PlayerWidget(QWidget):
     end_file_signal = Signal()
     
     def __init__(self, parent=None, persistence_manager: PersistenceManager = None):
-        # ... (init is unchanged) ...
         super().__init__(parent)
         self.persistence_manager = persistence_manager
         self.player = None; self.overlay = None; self.current_aid = 'no'
@@ -67,11 +76,11 @@ class PlayerWidget(QWidget):
             self.setup_connections()
 
     def initialize_player(self):
-        # ... (this method is unchanged) ...
         try:
             self.player = mpv.MPV(
                 wid=str(int(self.video_widget.winId())), vo='gpu',
-                log_handler=mpv_log_handler, input_default_bindings=True,
+                log_handler=mpv_log_handler, # Use the safe handler
+                input_default_bindings=True,
                 input_vo_keyboard=True,
                 ytdl=True
             )
@@ -84,7 +93,6 @@ class PlayerWidget(QWidget):
             error_label.setStyleSheet("color: red; background-color: black;")
 
     def setup_observers(self):
-        # ... (this method is unchanged) ...
         if not self.player: return
         self.player.observe_property('pause', lambda n, v: self.pause_changed.emit(v if v is not None else False))
         self.player.observe_property('time-pos', lambda n, v: self.time_pos_changed.emit(v if v is not None else 0.0))
@@ -102,7 +110,6 @@ class PlayerWidget(QWidget):
         self.player.observe_property('chapter-list', self.on_chapter_list_change)
         self.player.observe_property('chapter', self.on_chapter_change)
 
-    # ... (on_..._change handlers are unchanged) ...
     def on_aid_change(self, name, value):
         self.current_aid = str(value) if value is not None else 'no'
         self.aid_changed.emit(self.current_aid)
@@ -120,18 +127,33 @@ class PlayerWidget(QWidget):
         self.chapter_changed.emit(self.current_chapter)
 
     def on_end_file_event(self, event):
-        # ... (this method is unchanged) ...
         try:
             event_id = event.event_id
-            reason = getattr(event.data, 'reason', None) 
-            if event_id == mpv.MpvEventID.END_FILE and reason == mpv.MpvEventEndFile.EOF:
-                logger.info("MPV 'end-file' (EOF) event received. Emitting signal.")
-                self.end_file_signal.emit()
+            reason = getattr(event.data, 'reason', None)
+            
+            # Check if this is an END_FILE event with EOF reason (normal playback end)
+            # Multiple comparison methods for robustness across different mpv versions
+            is_end_file = (event_id == mpv.MpvEventID.END_FILE or 
+                          str(event_id) == 'end-file' or 
+                          'end-file' in str(event_id).lower() or
+                          (hasattr(event_id, 'value') and event_id.value == 7))
+            
+            if is_end_file:
+                # In python-mpv, reason values:
+                # 0 = EOF (End of File - normal end)
+                # 2 = STOP (User stopped)
+                # 3 = QUIT (Player quit)
+                # 4 = ERROR (Playback error)
+                
+                if reason == 0:
+                    logger.info("Video playback finished (EOF). Emitting end_file_signal.")
+                    self.end_file_signal.emit()
+                else:
+                    logger.debug(f"End-file event with reason={reason} (not EOF, ignoring)")
         except Exception as e:
             logger.error(f"Error in on_end_file_event: {e}", exc_info=True)
 
     def on_playback_restart_event(self, event):
-        # ... (this method is unchanged) ...
         try:
             logger.debug("Playback-restart event triggered.")
             if self.pending_resume_time > 0:
@@ -143,7 +165,6 @@ class PlayerWidget(QWidget):
             self.player.pause = False
 
     def setup_connections(self):
-        # ... (this method is unchanged) ...
         if not self.overlay: return
         self.pause_changed.connect(self.overlay.update_pause_button)
         self.time_pos_changed.connect(self.overlay.update_time)
@@ -163,58 +184,82 @@ class PlayerWidget(QWidget):
 
     @Slot()
     def handle_end_file(self):
-        # ... (this method is unchanged) ...
+        """Handle end-file signal and emit playback_finished if not in Loop One mode."""
         if self.loop_state == 1:
-            logger.debug("End-file event received, but in 'Loop One' mode. Ignoring.")
+            logger.debug("Loop One active, video will repeat automatically.")
             return
-        logger.info("Handling end-file logic.")
-        self.playback_finished.emit(self.loop_state == 2)
+        
+        loop_all_active = self.loop_state == 2
+        logger.info(f"Playback finished. Loop All: {loop_all_active}")
+        self.playback_finished.emit(loop_all_active)
 
     def toggle_pause(self):
-        # ... (this method is unchanged) ...
-        if self.player: self.player.pause = not self.player.pause
+        if self.player:
+            try:
+                self.player.pause = not self.player.pause
+            except Exception as e:
+                logger.error(f"Failed to toggle pause: {e}")
+
     def next_chapter(self):
-        # ... (this method is unchanged) ...
-        if self.player: self.player.command('add', 'chapter', 1)
+        if self.player:
+            try:
+                self.player.command('add', 'chapter', 1)
+            except Exception as e:
+                logger.error(f"Failed to skip to next chapter: {e}")
+
     def prev_chapter(self):
-        # ... (this method is unchanged) ...
-        if self.player: self.player.command('add', 'chapter', -1)
+        if self.player:
+            try:
+                self.player.command('add', 'chapter', -1)
+            except Exception as e:
+                logger.error(f"Failed to skip to previous chapter: {e}")
+
     def seek_forward(self):
-        # ... (this method is unchanged) ...
-        if self.player: self.player.command('seek', 10, 'relative')
+        if self.player:
+            try:
+                self.player.command('seek', 10, 'relative')
+            except Exception as e:
+                logger.error(f"Failed to seek forward: {e}")
+
     def seek_backward(self):
-        # ... (this method is unchanged) ...
-        if self.player: self.player.command('seek', -10, 'relative')
+        if self.player:
+            try:
+                self.player.command('seek', -10, 'relative')
+            except Exception as e:
+                logger.error(f"Failed to seek backward: {e}")
+
     def add_volume(self, amount):
-        # ... (this method is unchanged) ...
-        if self.player: self.player.command('add', 'volume', amount)
-        
+        if self.player:
+            try:
+                self.player.command('add', 'volume', amount)
+            except Exception as e:
+                logger.error(f"Failed to adjust volume: {e}")
+
     @Slot()
     def cycle_loop_state(self):
-        # ... (this method is unchanged) ...
-        if self.loop_state == 0:
-            self.loop_state = 1
-            self.player.loop_file = 'inf'
-            self.loop_state_changed.emit('one')
-            logger.info("Loop state set to ONE.")
-        elif self.loop_state == 1:
-            self.loop_state = 2
-            self.player.loop_file = 'no'
-            self.loop_state_changed.emit('all')
-            logger.info("Loop state set to ALL.")
-        else:
-            self.loop_state = 0
-            self.player.loop_file = 'no'
-            self.loop_state_changed.emit('none')
-            logger.info("Loop state set to NONE.")
-        
-    # --- THIS IS THE UPDATED METHOD ---
+        if not self.player:
+            return
+        try:
+            if self.loop_state == 0:
+                self.loop_state = 1
+                self.player.loop_file = 'inf'
+                self.loop_state_changed.emit('one')
+                logger.info("Loop state set to ONE.")
+            elif self.loop_state == 1:
+                self.loop_state = 2
+                self.player.loop_file = 'no'
+                self.loop_state_changed.emit('all')
+                logger.info("Loop state set to ALL.")
+            else:
+                self.loop_state = 0
+                self.player.loop_file = 'no'
+                self.loop_state_changed.emit('none')
+                logger.info("Loop state set to NONE.")
+        except Exception as e:
+            logger.error(f"Failed to cycle loop state: {e}")
+
     @Slot(str, list, list)
-    def load_file(self, filepath, audio_tracks=None, video_tracks=None):
-        """
-        Loads a file or a main stream, and appends
-        additional audio/video tracks if provided.
-        """
+    def load_file(self, filepath, audio_tracks=None, video_tracks=None, show_controls=True):
         if self.player:
             self.save_current_position()
             self.player.stop() 
@@ -227,41 +272,49 @@ class PlayerWidget(QWidget):
             
             if video_tracks:
                 for track in video_tracks:
-                    logger.debug(f"Adding video track: {track['name']}")
-                    # Set 'auto' to add, 'cached' to save bandwidth
-                    self.player.command('video-add', track['url'], 'cached', track['name'])
+                    try:
+                        logger.debug(f"Adding video track: {track['name']}")
+                        self.player.command('video-add', track['url'], 'auto', track['name'])
+                    except Exception as e:
+                        logger.warning(f"Failed to add video track {track.get('name')}: {e}")
 
             if audio_tracks:
                 for track in audio_tracks:
-                    logger.debug(f"Adding audio track: {track['name']}")
-                    self.player.command('audio-add', track['url'], 'cached', track['name'])
+                    try:
+                        logger.debug(f"Adding audio track: {track['name']}")
+                        self.player.command('audio-add', track['url'], 'auto', track['name'])
+                    except Exception as e:
+                        logger.warning(f"Failed to add audio track {track.get('name')}: {e}")
             
-            self.show_controls()
-            
-    # --- load_network_stream is GONE, this is correct ---
+            if show_controls:
+                self.show_controls()
             
     def check_for_resume(self):
-        # ... (this method is unchanged) ...
         self.pending_resume_time = 0.0
+        
         if self.loop_state == 2:
             logger.debug("Loop All active, skipping resume dialog.")
             return
+
         if not self.persistence_manager or not self.current_filepath:
             return
+            
         last_time = self.persistence_manager.load_playback_position(self.current_filepath)
+        
         if last_time > 10:
             logger.info(f"Found saved position: {last_time}s")
+            
             reply = QMessageBox.question(
                 self, "Resume Playback?",
                 f"You last stopped watching at {format_time(last_time)}.\n\nDo you want to resume from this position?",
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                 QMessageBox.StandardButton.Yes
             )
+            
             if reply == QMessageBox.StandardButton.Yes:
                 self.pending_resume_time = last_time
 
     def save_current_position(self):
-        # ... (this method is unchanged) ...
         if (self.persistence_manager and 
             self.player and 
             self.current_filepath and 
@@ -275,15 +328,22 @@ class PlayerWidget(QWidget):
                 self.persistence_manager.save_playback_position(self.current_filepath, current_time)
                 
     def shutdown(self):
-        # ... (this method is unchanged) ...
         if self.player:
             logger.info("Shutting down MPV player.")
-            self.player.stop(); self.player.command('quit'); self.player.terminate()
+            try:
+                self.player.stop()
+                self.player.command('quit')
+            except Exception as e:
+                logger.warning(f"Error during MPV shutdown: {e}")
+            finally:
+                try:
+                    self.player.terminate()
+                except Exception as e:
+                    logger.warning(f"Error terminating MPV: {e}")
         else:
             logger.info("Shutdown called, but no player instance found.")
             
     def resizeEvent(self, event):
-        # ... (this method is unchanged) ...
         if self.overlay:
             overlay_height = self.overlay.sizeHint().height()
             x = 0; y = self.height() - overlay_height
@@ -292,11 +352,9 @@ class PlayerWidget(QWidget):
         super().resizeEvent(event)
         
     def mouseMoveEvent(self, event):
-        # ... (this method is unchanged) ...
         self.show_controls(); super().mouseMoveEvent(event)
         
     def mousePressEvent(self, event):
-        # ... (this method is unchanged) ...
         if not self.player or not self.overlay:
             super().mousePressEvent(event); return
         self.video_widget.setFocus()
@@ -309,21 +367,19 @@ class PlayerWidget(QWidget):
         else: super().mousePressEvent(event)
         
     def mouseDoubleClickEvent(self, event):
-        # ... (this method is unchanged) ...
         self.toggle_fullscreen_requested.emit(); super().mouseDoubleClickEvent(event)
         
     def show_controls(self):
-        # ... (this method is unchanged) ...
-        if self.overlay:
+        if self.overlay and self.isVisible():
             self.overlay.show()
             self.setCursor(Qt.CursorShape.ArrowCursor)
             self.hide_timer.start()
             focused_widget = QApplication.instance().focusWidget()
             if not (focused_widget and self.overlay.isAncestorOf(focused_widget)):
                  self.video_widget.setFocus()
+            logger.debug("Controls shown.")
                  
     def hide_controls(self, force=False):
-        # ... (this method is unchanged) ...
         if self.overlay:
             if not force:
                 focused_widget = QApplication.instance().focusWidget()
@@ -336,5 +392,11 @@ class PlayerWidget(QWidget):
                         widget = widget.parent()
                 if is_overlay_focused:
                     self.hide_timer.start(); return
+            
+            # Stop the hide timer when forcing hide
+            if force:
+                self.hide_timer.stop()
+            
             self.overlay.hide()
             self.setCursor(Qt.CursorShape.BlankCursor)
+            logger.debug("Controls hidden.")
