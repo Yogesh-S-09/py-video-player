@@ -44,7 +44,7 @@ class MainWindow(QMainWindow):
         # --- Store the manager ---
         self.theme_manager = theme_manager
 
-        icon_path = resource_path("Assets/icon.png")
+        icon_path = resource_path("Assets/icon.ico")
         if Path(icon_path).exists():
             self.setWindowIcon(QIcon(icon_path))
         else:

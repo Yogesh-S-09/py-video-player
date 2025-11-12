@@ -4,9 +4,7 @@ A feature-rich, modern media player built with Python, PySide6, and the powerful
 
 This project is a high-performance video player that combines the speed and compatibility of `mpv` with a sleek, responsive, and dark-themed graphical interface built in PySide6 (Qt). It integrates `yt-dlp` for seamless network streaming and provides a full suite of professional features, including chapter support, advanced track selection, and keyboard shortcuts.
 
-![Main Player Screenshot](https://i.imgur.com/YOUR_SCREENSHOT_URL.png)
-
----
+![Main Player Screenshot](https://i.ibb.co/RpbrWqJx/Untitled.png)
 
 ## ✨ Features
 
@@ -56,17 +54,6 @@ This project is a high-performance video player that combines the speed and comp
     * **Custom Icon**: Features a custom application icon for the `.exe`, window, and taskbar.
     * **Robust Logging**: All `mpv` and application events are logged to a `player.log` file in the application directory for easy debugging.
 
----
-
-## 📸 Screenshots
-
-| Player with Overlay | Track Selection Menus |
-| :---: | :---: |
-| ![Overlay Screenshot](https://i.imgur.com/YOUR_OVERLAY_SCREENSHOT.png) | ![Track Menu Screenshot](https://i.imgur.com/YOUR_TRACK_MENU_SCREENSHOT.png) |
-| **Chapter List Menu** | **Seek Bar Tooltip** |
-| ![Chapter Menu Screenshot](https://i.imgur.com/YOUR_CHAPTER_MENU_SCREENSHOT.png) | ![Seek Tooltip Screenshot](https://i.imgur.com/YOUR_SEEK_TOOLTIP_SCREENSHOT.png) |
-
----
 
 ## 🚀 Getting Started
 
@@ -89,8 +76,8 @@ You must have the following dependencies available.
 
 1.  Clone this repository:
     ```bash
-    git clone [https://github.com/YOUR-USERNAME/YOUR-PROJECT-NAME.git](https://github.com/YOUR-USERNAME/YOUR-PROJECT-NAME.git)
-    cd YOUR-PROJECT-NAME
+    git clone https://github.com/Yogesh-S-09/py-video-player.git
+    cd py-video-player
     ```
 
 2.  Create a `requirements.txt` file in the root of the project:
@@ -104,31 +91,12 @@ You must have the following dependencies available.
     pip install -r requirements.txt
     ```
 
-4.  Ensure your `Assets` folder contains `libmpv-2.dll` and `yt-dlp.exe`.
+4.  Ensure your `Assets` folder contains `libmpv-2.dll` and `icon.ico`.
 
 5.  Run the application:
     ```bash
     python main.py
     ```
-
----
-
-## ⌨️ Keyboard Shortcuts
-
-| Key | Action |
-| :--- | :--- |
-| **Spacebar** | Play / Pause |
-| **F** | Toggle Fullscreen |
-| **Esc** | Exit Fullscreen |
-| **Right Arrow** | Seek Forward +10s |
-| **Left Arrow** | Seek Backward -10s |
-| **Up Arrow** | Volume +5 |
-| **Down Arrow** | Volume -5 |
-| **Ctrl + O** | Open File |
-| **Ctrl + N** | Open Network Stream |
-| **F1** | Open Help (mpv manual) |
-
----
 
 ## 📦 Building a Single `.exe` File
 
@@ -144,9 +112,7 @@ This project is configured to be built into a single, standalone executable usin
     YOUR-PROJECT-FOLDER/
     ├── Assets/
     │   ├── icon.ico         (For the .exe file)
-    │   ├── icon.png         (For the window title bar)
-    │   ├── libmpv-2.dll     (The mpv binary)
-    │   └── yt-dlp.exe       (The yt-dlp binary)
+    │   └── libmpv-2.dll     (The mpv binary)
     ├── main.py
     ├── main_window.py
     ├── player_widget.py
@@ -158,7 +124,7 @@ This project is configured to be built into a single, standalone executable usin
 3.  Run the following `PyInstaller` command from your project's root folder:
 
     ```bash
-    pyinstaller --onefile --windowed --name="MyMediaPlayer" --icon="Assets/icon.ico" --add-data="Assets/icon.png;." --add-data="Assets/libmpv-2.dll;." --add-data="Assets/yt-dlp.exe;." main.py
+    pyinstaller --onefile --windowed --name="MyMediaPlayer" --icon="Assets/icon.ico" --add-data="Assets/icon.ico;Assets" --add-data="Assets/libmpv-2.dll;."  main.py    
     ```
 
     * `--onefile`: Bundles everything into a single `.exe`.
@@ -169,8 +135,6 @@ This project is configured to be built into a single, standalone executable usin
 
 4.  Your standalone `MyMediaPlayer.exe` will be in the `dist/` folder.
 
----
-
 ## 🙏 Acknowledgements
 
 This player stands on the shoulders of giants. A huge thank you to the teams behind:
@@ -178,8 +142,6 @@ This player stands on the shoulders of giants. A huge thank you to the teams beh
 * [python-mpv](https://github.com/jaseg/python-mpv)
 * [yt-dlp](https://github.com/yt-dlp/yt-dlp)
 * [PySide6 (Qt for Python)](https://www.qt.io/qt-for-python)
-
----
 
 ## 📄 License
 
