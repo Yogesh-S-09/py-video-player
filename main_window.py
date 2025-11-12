@@ -21,6 +21,8 @@ from player_widget import PlayerWidget
 from library_widget import LibraryWidget
 from stream_extractor import get_all_streams
 from theme_manager import ThemeManager
+from key_manager import ShortcutsDialog
+from key_config import K
 
 logger = logging.getLogger(__name__)
 
@@ -95,7 +97,7 @@ class MainWindow(QMainWindow):
         go_to_library_action.triggered.connect(self.switch_to_library) 
         view_menu.addAction(go_to_library_action)
 
-        # --- NEW THEMES MENU ---
+        # --- THEMES MENU ---
         themes_menu = menu_bar.addMenu("&Themes")
         theme_group = QActionGroup(self)
         theme_group.setExclusive(True)
@@ -118,6 +120,11 @@ class MainWindow(QMainWindow):
         help_action.setShortcut(QKeySequence.StandardKey.HelpContents)
         help_action.triggered.connect(self.open_help_link)
         help_menu.addAction(help_action)
+        help_menu.addSeparator()
+        shortcuts_action = QAction("Keyboard Shortcuts...", self)
+        shortcuts_action.setShortcut(QKeySequence("Shift+F1"))
+        shortcuts_action.triggered.connect(self.show_shortcuts_dialog)
+        help_menu.addAction(shortcuts_action)
         help_menu.addSeparator()
         about_action = QAction("&About...", self)
         about_action.triggered.connect(self.show_about_dialog)
@@ -254,7 +261,15 @@ class MainWindow(QMainWindow):
                 self.style().standardIcon(QStyle.StandardPixmap.SP_ArrowDown)
             )
             self.menuBar().setVisible(False)
-            
+
+    @Slot()
+    def show_shortcuts_dialog(self):
+        """
+        Shows the modal keyboard shortcuts dialog.
+        """
+        dialog = ShortcutsDialog(self)
+        dialog.exec() # Use exec() to show it as a modal dialog
+
     @Slot()
     def show_about_dialog(self):
         # ... (this method is unchanged) ...
@@ -279,38 +294,73 @@ class MainWindow(QMainWindow):
         self.library_widget.cleanup_all_workers()
         event.accept()
 
-    # --- THIS IS THE UPDATED METHOD ---
     def keyPressEvent(self, event):
         focused = self.focusWidget()
+        # If typing in an input, don't trigger shortcuts
         if focused and isinstance(focused, (QInputDialog, QListWidget)):
              super().keyPressEvent(event)
              return
-        if event.key() == Qt.Key.Key_Space:
-            self.player_widget.toggle_pause()
-            event.accept()
-        elif event.key() == Qt.Key.Key_F:
+        
+        # Get the key code and modifier mask
+        key = event.key()
+        mods = event.modifiers()
+        
+        # --- Handle player-only keys (only if player is active) ---
+        if self.stack.currentWidget() == self.player_widget:
+            # Playback
+            if key == K.PLAY_PAUSE["key"] and mods == K.PLAY_PAUSE["mod"]:
+                self.player_widget.toggle_pause()
+                event.accept()
+            elif key == K.MUTE["key"] and mods == K.MUTE["mod"]:
+                self.player_widget.toggle_mute()
+                event.accept()
+            elif key == K.SEEK_FWD["key"] and mods == K.SEEK_FWD["mod"]:
+                self.player_widget.seek_forward()
+                event.accept()
+            elif key == K.SEEK_BACK["key"] and mods == K.SEEK_BACK["mod"]: 
+                self.player_widget.seek_backward()
+                event.accept()
+            elif key == K.VOL_UP["key"] and mods == K.VOL_UP["mod"]:
+                self.player_widget.add_volume(5)
+                event.accept()
+            elif key == K.VOL_DOWN["key"] and mods == K.VOL_DOWN["mod"]:
+                self.player_widget.add_volume(-5)
+                event.accept()
+
+            # Tracks & Chapters
+            elif key == K.NEXT_CHAPTER["key"] and mods == K.NEXT_CHAPTER["mod"]:
+                self.player_widget.next_chapter()
+                event.accept()
+            elif key == K.PREV_CHAPTER["key"] and mods == K.PREV_CHAPTER["mod"]:
+                self.player_widget.prev_chapter()
+                event.accept()
+            elif key == K.CYCLE_SUB["key"] and mods == K.CYCLE_SUB["mod"]:
+                self.player_widget.cycle_subtitles()
+                event.accept()
+            elif key == K.CYCLE_AUDIO["key"] and mods == K.CYCLE_AUDIO["mod"]:
+                self.player_widget.cycle_audio_track()
+                event.accept()
+            elif key == K.CYCLE_VIDEO["key"] and mods == K.CYCLE_VIDEO["mod"]:
+                self.player_widget.cycle_video_track()
+                event.accept()
+
+            # Playlist
+            elif key == K.NEXT_PLAYLIST["key"] and mods == K.NEXT_PLAYLIST["mod"]:
+                self.library_widget.play_next(loop_all=False) # Get loop state?
+                event.accept()
+            elif key == K.PREV_PLAYLIST["key"] and mods == K.PREV_PLAYLIST["mod"]:
+                self.library_widget.play_previous()
+                event.accept()
+
+        # --- Handle Global Keys (work in any view) ---
+        if key == K.FULLSCREEN["key"] and mods == K.FULLSCREEN["mod"]:
             self.toggle_fullscreen()
             event.accept()
-        elif event.key() == Qt.Key.Key_Escape and self.isFullScreen():
-            if self.stack.currentWidget() == self.player_widget:
+        elif key == K.ESC_FULLSCREEN["key"] and mods == K.ESC_FULLSCREEN["mod"]:
+            if self.isFullScreen() and self.stack.currentWidget() == self.player_widget:
                 self.toggle_fullscreen()
             event.accept()
-        elif event.key() == Qt.Key.Key_Right:
-            self.player_widget.seek_forward()
-            event.accept()
         
-        # --- FIX: Changed 'QtKey' to 'Qt.Key' ---
-        elif event.key() == Qt.Key.Key_Left: 
-            self.player_widget.seek_backward()
-            event.accept()
-        # -----------------------------------------
-            
-        elif event.key() == Qt.Key.Key_Up:
-            self.player_widget.add_volume(5)
-            event.accept()
-        elif event.key() == Qt.Key.Key_Down:
-            self.player_widget.add_volume(-5)
-            event.accept()
-        else:
+        # If event is not accepted, pass it to the base class
+        if not event.isAccepted():
             super().keyPressEvent(event)
-    # ------------------------------------

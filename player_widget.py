@@ -292,6 +292,41 @@ class PlayerWidget(QWidget):
             except Exception as e:
                 logger.error(f"Failed to adjust volume: {e}")
 
+    def toggle_mute(self):
+        """Toggles the player's mute status."""
+        if self.player:
+            try:
+                self.player.mute = not self.player.mute
+            except Exception as e:
+                logger.error(f"Failed to toggle mute: {e}")
+
+    def cycle_subtitles(self):
+        """Cycles to the next subtitle track."""
+        if self.player:
+            try:
+                self.player.command('cycle', 'sub')
+                logger.debug("Cycled subtitle track.")
+            except Exception as e:
+                logger.error(f"Failed to cycle subtitles: {e}")
+
+    def cycle_audio_track(self):
+        """Cycles to the next audio track."""
+        if self.player:
+            try:
+                self.player.command('cycle', 'audio')
+                logger.debug("Cycled audio track.")
+            except Exception as e:
+                logger.error(f"Failed to cycle audio: {e}")
+
+    def cycle_video_track(self):
+        """Cycles to the next video track."""
+        if self.player:
+            try:
+                self.player.command('cycle', 'video')
+                logger.debug("Cycled video track.")
+            except Exception as e:
+                logger.error(f"Failed to cycle video: {e}")
+
     @Slot()
     def cycle_loop_state(self):
         if not self.player:
